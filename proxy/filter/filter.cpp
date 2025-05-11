@@ -136,8 +136,8 @@ public:
 
 
 
-class nat_table{
-private:
+class nat_table {
+public:
     struct nat_entry {
         DWORD orig_src_addr;
         WORD orig_src_port;
@@ -147,68 +147,49 @@ private:
         WORD new_dst_port;
     };
 
-    std::unordered_map<uint64_t, nat_entry> nat_table_map;
+private:
+    std::vector<nat_entry> entries;
     std::mutex mtx;
 
 public:
-    static uint64_t make_key(uint32_t address, uint16_t port) {
-        uint64_t key = 0;
-        *(uint32_t*)&key = address;
-        *(uint16_t*)((uint8_t*)&key + 4) = port;
-        return key;
-    }
-
     void add_entry(DWORD orig_src_addr, WORD orig_src_port, DWORD orig_dst_addr, WORD orig_dst_port, DWORD new_dst_addr, WORD new_dst_port) {
         std::lock_guard<std::mutex> lock(mtx);
-        auto key = make_key(new_dst_addr, new_dst_port);
-        if (nat_table_map.find(key) == nat_table_map.end()) {
-            nat_entry entry;
-            entry.orig_src_addr = orig_src_addr;
-            entry.orig_src_port = orig_src_port;
-            entry.orig_dst_addr = orig_dst_addr;
-            entry.orig_dst_port = orig_dst_port;
-            entry.new_dst_addr = new_dst_addr;
-            entry.new_dst_port = new_dst_port;
-            nat_table_map[key] = entry;
-        }
-        else {
-            // Você pode escolher o que fazer aqui, como atualizar a entrada existente
-            // ou simplesmente ignorar a nova entrada
-        }
-    }
-
-
-    bool get_original_relation_info(uint32_t da, uint16_t dp, uint32_t& original_sa, uint16_t& original_sp, uint32_t& original_da, uint16_t& original_dp) {
-        std::lock_guard<std::mutex> lock(mtx);
-        nat_entry* entry = get_entry(da, dp);
-        if (entry != nullptr) {
-            original_sa = entry->orig_src_addr;
-            original_sp = entry->orig_src_port;
-            original_da = entry->orig_dst_addr;
-            original_dp = entry->orig_dst_port;
-            return true;
-        }
-        return false;
-    }
-
-    nat_entry* get_entry(DWORD dst_addr, WORD dst_port) {
-        std::lock_guard<std::mutex> lock(mtx);
-        auto key = make_key(dst_addr, dst_port);
-        auto it = nat_table_map.find(key);
-        if (it != nat_table_map.end()) {
-            return &it->second;
-        }
-        return nullptr;
-    }
-
-    nat_entry* get_entry_reverse(DWORD src_addr, WORD src_port) {
-        std::lock_guard<std::mutex> lock(mtx);
-        for (auto& entry : nat_table_map) {
-            if (entry.second.new_dst_addr == src_addr && entry.second.new_dst_port == src_port) {
-                return &entry.second;
+        for (auto& entry : entries) {
+            if (entry.orig_src_addr == orig_src_addr && entry.orig_src_port == orig_src_port &&
+                entry.orig_dst_addr == orig_dst_addr && entry.orig_dst_port == orig_dst_port) {
+                // Entrada já existe, podemos atualizar ou ignorar
+                return;
             }
         }
-        return nullptr;
+        nat_entry entry;
+        entry.orig_src_addr = orig_src_addr;
+        entry.orig_src_port = orig_src_port;
+        entry.orig_dst_addr = orig_dst_addr;
+        entry.orig_dst_port = orig_dst_port;
+        entry.new_dst_addr = new_dst_addr;
+        entry.new_dst_port = new_dst_port;
+        entries.push_back(entry);
+    }
+
+    bool get_original_relation_info(
+        uint32_t sa, uint16_t sp, uint32_t da, uint16_t dp,
+        uint32_t& original_sa, uint16_t& original_sp, uint32_t& original_da, uint16_t& original_dp
+    ) {
+        std::lock_guard<std::mutex> lock(mtx);
+        for (auto& entry : entries) {
+            if (
+                ((entry.new_dst_addr == da || da == 0) && entry.new_dst_port == dp)
+                &&
+                (entry.orig_src_addr == sa && entry.orig_src_port == sp)
+                ) {
+                original_sa = entry.orig_src_addr;
+                original_sp = entry.orig_src_port;
+                original_da = entry.orig_dst_addr;
+                original_dp = entry.orig_dst_port;
+                return true;
+            }
+        }
+        return false;
     }
 };
 
@@ -269,6 +250,98 @@ bool is_local_host(uint32_t address) {
     return false;
 }
 
+PWINDIVERT_IPHDR get_ip_header(PVOID packet) {
+    return (PWINDIVERT_IPHDR)packet;
+}
+
+PWINDIVERT_UDPHDR get_udp_header(PWINDIVERT_IPHDR ip_header) {
+    return (PWINDIVERT_UDPHDR)((PBYTE)ip_header + ip_header->HdrLength * 4);
+}
+
+PWINDIVERT_TCPHDR get_tcp_header(PWINDIVERT_IPHDR ip_header) {
+    return (PWINDIVERT_TCPHDR)((PBYTE)ip_header + ip_header->HdrLength * 4);
+}
+
+bool translate_response_udp_packet(PWINDIVERT_IPHDR ip_header, PWINDIVERT_UDPHDR udp_header, nat_table& nat) {
+    uint32_t orig_dst_addr;
+    uint16_t orig_dst_port;
+    uint32_t orig_src_addr;
+    uint16_t orig_src_port;
+
+ /*   if (nat.get_original_relation_info(ip_header->SrcAddr, (udp_header->SrcPort), orig_src_addr, orig_src_port, orig_dst_addr, orig_dst_port)) {
+        ip_header->DstAddr = orig_src_addr;
+        udp_header->DstPort = (orig_src_port);
+        ip_header->SrcAddr = orig_dst_addr;
+        udp_header->SrcPort = orig_dst_port;
+        return true;
+    }*/
+    return false;
+}
+
+bool translate_response_tcp_packet(PWINDIVERT_IPHDR ip_header, PWINDIVERT_TCPHDR tcp_header, nat_table& nat) {
+    uint32_t orig_dst_addr;
+    uint16_t orig_dst_port;
+    uint32_t orig_src_addr;
+    uint16_t orig_src_port;
+
+    if (nat.get_original_relation_info(
+        ip_header->DstAddr, (tcp_header->DstPort),
+        ip_header->SrcAddr, (tcp_header->SrcPort),
+
+        orig_src_addr, orig_src_port, orig_dst_addr, orig_dst_port)) {
+
+        std::cout << "\n ret old entry " <<
+            ep_relation_to_str(
+                reverse_ipv4(ip_header->SrcAddr),
+                ntohs(tcp_header->SrcPort),
+                reverse_ipv4(ip_header->DstAddr),
+                ntohs(tcp_header->DstPort)
+            );
+
+        ip_header->SrcAddr = orig_dst_addr;
+        tcp_header->SrcPort = (orig_dst_port);
+        ip_header->DstAddr = orig_src_addr;
+        tcp_header->DstPort = (orig_src_port);
+
+       
+        std::cout << "\n ret new entry " <<
+            ep_relation_to_str(
+                reverse_ipv4(ip_header->SrcAddr),
+                ntohs(tcp_header->SrcPort),
+                reverse_ipv4(ip_header->DstAddr),
+                ntohs(tcp_header->DstPort)
+            );
+
+        return true;
+    }
+    return false;
+}
+
+bool is_response_packet(PVOID packet, nat_table& nat) {
+    PWINDIVERT_IPHDR ip_header = get_ip_header(packet);
+
+    if (ip_header->Protocol == IPPROTO_UDP) {
+        PWINDIVERT_UDPHDR udp_header = get_udp_header(ip_header);
+        if (ip_header->SrcAddr != udp_server_endpoint_addr)
+            return false;
+        if (udp_header->SrcPort != udp_server_endpoint_port)
+            return false;
+        return
+            translate_response_udp_packet(ip_header, udp_header, nat);
+    }
+    else if (ip_header->Protocol == IPPROTO_TCP) {
+        PWINDIVERT_TCPHDR tcp_header = get_tcp_header(ip_header);
+        if (ip_header->SrcAddr != tcp_server_endpoint_addr)
+            return false;
+        if (tcp_header->SrcPort != tcp_server_endpoint_port)
+            return false;
+        return
+            translate_response_tcp_packet(ip_header, tcp_header, nat);
+    }
+
+    return
+        false;
+}
 
 int run_windivert() {
     HANDLE handle = WinDivertOpen("outbound and tcp", WINDIVERT_LAYER_NETWORK, 0, 0);
@@ -297,6 +370,12 @@ int run_windivert() {
         PVOID data;
         UINT data_len;
         if (!WinDivertHelperParsePacket(packet, packet_len, &ip_header, NULL, NULL, NULL, NULL, &tcp_header, &udp_header, &data, &data_len, NULL, NULL)) {
+            BOOL res = WinDivertSend(handle, packet, packet_len, NULL, &addr);
+            continue;
+        }
+
+        if (is_response_packet(packet, nat)) {
+            WinDivertHelperCalcChecksums(packet, packet_len, NULL, 0);
             BOOL res = WinDivertSend(handle, packet, packet_len, NULL, &addr);
             continue;
         }
@@ -330,16 +409,27 @@ int run_windivert() {
                 new_dst_port = udp_server_endpoint_port;
             }
 
-
            
-            nat.add_entry(
-                reverse_ipv4(ip_header->SrcAddr),
-                ntohs(tcp_header->SrcPort),
-                reverse_ipv4(ip_header->DstAddr),
-                ntohs(tcp_header->DstPort),
-                reverse_ipv4(new_dst_addr),
-                ntohs(new_dst_port)
-            );
+            if (ip_header->Protocol == IPPROTO_TCP) {
+                nat.add_entry(
+                    (ip_header->SrcAddr),
+                    (tcp_header->SrcPort),
+                    (ip_header->DstAddr),
+                    (tcp_header->DstPort),
+                    (new_dst_addr),
+                    (new_dst_port)
+                );
+            }
+            else if (ip_header->Protocol == IPPROTO_UDP) {
+                nat.add_entry(
+                    (ip_header->SrcAddr),
+                    (udp_header->SrcPort),
+                    (ip_header->DstAddr),
+                    (udp_header->DstPort),
+                    (new_dst_addr),
+                    (new_dst_port)
+                );
+            }
 
             std::cout << "\n old entry " <<
                 ep_relation_to_str(
@@ -357,17 +447,18 @@ int run_windivert() {
                 );
 
 
-       /*     ip_header->DstAddr = new_dst_addr;
+            ip_header->DstAddr = new_dst_addr;
             if (ip_header->Protocol == IPPROTO_TCP) {
                 tcp_header->DstPort = new_dst_port;
             }
             else if (ip_header->Protocol == IPPROTO_UDP) {
                 udp_header->DstPort = new_dst_port;
-            }*/
+            }
 
 
-            WinDivertHelperCalcChecksums(packet, packet_len, NULL, 0);
-            BOOL res = WinDivertSend(handle, packet, packet_len, NULL, &addr);
+            BOOL res = WinDivertHelperCalcChecksums(packet, packet_len, NULL, 0);
+            std::cout << "\n sun res " << res;
+            res = WinDivertSend(handle, packet, packet_len, NULL, &addr);
 
             std::cout << "\n send res " << res;
         }
@@ -382,8 +473,17 @@ int run_windivert() {
 
 }
 
-bool filter_get_original_relation_info(uint32_t da, uint16_t dp, uint32_t& original_sa, uint16_t& original_sp, uint32_t& original_da, uint16_t& original_dp) {
-    return nat.get_original_relation_info(da, dp, original_sa, original_sp, original_da, original_dp);
+bool filter_get_original_relation_info(
+    uint32_t sa, uint16_t sp, uint32_t da, uint16_t dp,
+    uint32_t& original_sa, uint16_t& original_sp, uint32_t& original_da, uint16_t& original_dp
+) {
+    
+    bool retval =  nat.get_original_relation_info( reverse_ipv4(da), htons(dp), reverse_ipv4(sa), htons(sp), original_sa, original_sp, original_da, original_dp);
+    original_sa = reverse_ipv4(original_sa);
+    original_sp = ntohs(original_sp);
+    original_da = reverse_ipv4(original_da);
+    original_dp = ntohs(original_dp);
+    return retval;
 }
 
 void set_udp_server_endpoint(DWORD addr, WORD port) {

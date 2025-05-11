@@ -4,7 +4,9 @@
 #include <functional>
 #include <queue>
 
-extern bool  filter_get_original_relation_info(uint32_t da, uint16_t dp, uint32_t& original_sa, uint16_t& original_sp, uint32_t& original_da, uint16_t& original_dp);
+extern bool  filter_get_original_relation_info(
+    uint32_t sa, uint16_t sp, uint32_t da, uint16_t dp,
+    uint32_t& original_sa, uint16_t& original_sp, uint32_t& original_da, uint16_t& original_dp);
 
 class tcp_server {
 public:
@@ -34,7 +36,13 @@ private:
 };
 
 tcp_server::tcp_server(boost::asio::io_context& io_context, unsigned short port)
-    : io_context_(io_context), acceptor_(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)) {
+    : io_context_(io_context),
+        acceptor_(
+            io_context, 
+            boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)
+        )
+      //  boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)
+    {
     start_accept();
 }
 
@@ -65,7 +73,10 @@ bool tcp_server::get_original_relation(uint32_t relation_id, uint32_t& sa, uint1
         uint32_t original_sa, original_da;
         uint16_t original_sp, original_dp;
 
-        bool res = filter_get_original_relation_info(current_da, current_dp, original_sa, original_sp, original_da, original_dp);
+        bool res = filter_get_original_relation_info(
+            current_da, current_dp, current_sa, current_sp,
+            original_sa, original_sp, original_da, original_dp
+        );
         if (res) {
             sa = original_sa;
             sp = original_sp;
@@ -82,10 +93,12 @@ bool tcp_server::get_original_relation(uint32_t relation_id, uint32_t& sa, uint1
 void tcp_server::start_accept() {
     std::shared_ptr<boost::asio::ip::tcp::socket> socket = std::make_shared<boost::asio::ip::tcp::socket>(io_context_);
     acceptor_.async_accept(*socket, std::bind(&tcp_server::handle_accept, this, socket, std::placeholders::_1));
+    auto localep = this->acceptor_.local_endpoint();
 }
 
 void tcp_server::handle_accept(std::shared_ptr<boost::asio::ip::tcp::socket> socket, const boost::system::error_code& error) {
     if (!error) {
+        
         uint32_t relation_id = next_id_++;
         connections_[relation_id] = socket;
         buffers_[relation_id].resize(60000);
