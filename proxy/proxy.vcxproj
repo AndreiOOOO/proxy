@@ -141,11 +141,10 @@
   <ItemGroup>
     <ClCompile Include="core\core.cpp" />
     <ClCompile Include="external\fowarder.cpp" />
+    <ClCompile Include="external\remote\core_remote.cpp" />
     <ClCompile Include="external\remote\fowarder_server.cpp" />
     <ClCompile Include="external\gateway.cpp" />
     <ClCompile Include="external\remote\gateway_remote.cpp" />
-    <ClCompile Include="external\remote\injector\tcp.cpp" />
-    <ClCompile Include="external\remote\injector\udp.cpp" />
     <ClCompile Include="filter\any_server.cpp" />
     <ClCompile Include="filter\filter.cpp" />
     <ClCompile Include="filter\tcp_server.cpp" />
@@ -155,12 +154,9 @@
     <ClCompile Include="test\internet_connector.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="external\fowarder.h" />
-    <ClInclude Include="external\gateway.h" />
-    <ClInclude Include="external\remote\fowarder_server.h" />
-    <ClInclude Include="external\remote\gateway_remote.h" />
-    <ClInclude Include="external\remote\injector\tcp.h" />
-    <ClInclude Include="external\remote\injector\udp.h" />
+    <ClInclude Include="core\core.h" />
+    <ClInclude Include="core\filter_settings.h" />
+    <ClInclude Include="core\relation_map.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

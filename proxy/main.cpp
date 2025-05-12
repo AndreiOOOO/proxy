@@ -65,6 +65,8 @@ extern void filter_any_server_init(boost::asio::io_context& io_context, unsigned
 
 
 extern void internet_connector_init(boost::asio::io_context& io_context);
+extern void gateway_init(boost::asio::io_context* io_context);
+
 
 boost::asio::io_context io_context;
 
@@ -83,6 +85,8 @@ void init() {
 
     filter_any_server_init(io_context, tcp_server_port, udp_server_port);
     internet_connector_init(io_context);
+
+    gateway_init(&io_context);
 
     io_context.post(
         []() {core_run(); }

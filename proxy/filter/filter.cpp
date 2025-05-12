@@ -486,6 +486,26 @@ bool filter_get_original_relation_info(
     return retval;
 }
 
+bool filter_get_process_name_from_packet(
+    uint32_t sa, uint16_t sp, uint32_t da, uint16_t dp,
+    std::string& name
+) {
+    if (!filter_get_original_relation_info(
+        sa, sp, da, dp,
+        sa, sp, da, dp
+    )) {
+        return false;
+    }
+
+    name = cache.get_process_name_from_packet(
+        reverse_ipv4(sa), htons(sp), reverse_ipv4(da), htons(dp)
+    );
+
+    return name.size() != 0;
+}
+
+
+
 void set_udp_server_endpoint(DWORD addr, WORD port) {
     udp_server_endpoint_addr = reverse_ipv4(addr);
     udp_server_endpoint_port = htons(port);

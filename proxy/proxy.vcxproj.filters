@@ -39,12 +39,6 @@
     <ClCompile Include="external\remote\fowarder_server.cpp">
       <Filter>Arquivos de Origem</Filter>
     </ClCompile>
-    <ClCompile Include="external\remote\injector\tcp.cpp">
-      <Filter>Arquivos de Origem</Filter>
-    </ClCompile>
-    <ClCompile Include="external\remote\injector\udp.cpp">
-      <Filter>Arquivos de Origem</Filter>
-    </ClCompile>
     <ClCompile Include="talk\settings.cpp">
       <Filter>Arquivos de Origem</Filter>
     </ClCompile>
@@ -57,24 +51,18 @@
     <ClCompile Include="test\internet_connector.cpp">
       <Filter>Arquivos de Origem</Filter>
     </ClCompile>
+    <ClCompile Include="external\remote\core_remote.cpp">
+      <Filter>Arquivos de Origem</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="external\remote\fowarder_server.h">
+    <ClInclude Include="core\filter_settings.h">
       <Filter>Arquivos de Cabeçalho</Filter>
     </ClInclude>
-    <ClInclude Include="external\fowarder.h">
+    <ClInclude Include="core\relation_map.h">
       <Filter>Arquivos de Cabeçalho</Filter>
     </ClInclude>
-    <ClInclude Include="external\gateway.h">
-      <Filter>Arquivos de Cabeçalho</Filter>
-    </ClInclude>
-    <ClInclude Include="external\remote\gateway_remote.h">
-      <Filter>Arquivos de Cabeçalho</Filter>
-    </ClInclude>
-    <ClInclude Include="external\remote\injector\udp.h">
-      <Filter>Arquivos de Cabeçalho</Filter>
-    </ClInclude>
-    <ClInclude Include="external\remote\injector\tcp.h">
+    <ClInclude Include="core\core.h">
       <Filter>Arquivos de Cabeçalho</Filter>
     </ClInclude>
   </ItemGroup>
