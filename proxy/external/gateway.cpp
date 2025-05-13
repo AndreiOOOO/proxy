@@ -26,7 +26,7 @@ public:
         }
     }
 
-    void async_recv(std::function<void(std::shared_ptr<std::string>)> handler) {
+    void set_recv_handler(std::function<void(std::shared_ptr<std::string>)> handler) {
         if (recv_handler_) {
             // Já existe um handler de recebimento, não é permitido ter mais de um
             return;
@@ -153,18 +153,20 @@ public:
     }
 
     void add_data(uint32_t id, std::shared_ptr<std::string> data) {
+        
         if (gateways_.find(id) != gateways_.end()) {
             gateways_[id]->add_data(data);
         }
     }
 
-    void async_recv(
+    void set_recv_handler(
         uint32_t id,
         std::function<void(uint32_t id, std::shared_ptr<std::string>)> handler
     ) {
         if (gateways_.find(id) != gateways_.end()) {
-            gateways_[id]->async_recv(
+            gateways_[id]->set_recv_handler(
                 [handler, id](std::shared_ptr<std::string> data) {
+                    std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << data->size();
                     handler(id, data);
                 }
             );
@@ -212,7 +214,7 @@ void gateway_async_recv(
     uint32_t gateway_id,
     std::function<void(uint32_t gateway_id, std::shared_ptr<std::string>)> handler
 ) {
-    manager->async_recv(gateway_id, handler);
+    manager->set_recv_handler(gateway_id, handler);
 }
 
 void gateway_reset(uint32_t id) {

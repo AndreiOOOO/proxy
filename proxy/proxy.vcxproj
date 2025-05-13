@@ -146,7 +146,11 @@
     <ClCompile Include="external\gateway.cpp" />
     <ClCompile Include="external\remote\gateway_remote.cpp" />
     <ClCompile Include="filter\any_server.cpp" />
-    <ClCompile Include="filter\filter.cpp" />
+    <ClCompile Include="filter\filter\filter.cpp" />
+    <ClCompile Include="filter\filter\filter_util.cpp" />
+    <ClCompile Include="filter\filter\nat_table.cpp" />
+    <ClCompile Include="filter\filter\packet_filter.cpp" />
+    <ClCompile Include="filter\filter\process_cache.cpp" />
     <ClCompile Include="filter\tcp_server.cpp" />
     <ClCompile Include="filter\udp_server.cpp" />
     <ClCompile Include="main.cpp" />
@@ -156,6 +160,11 @@
   <ItemGroup>
     <ClInclude Include="core\core.h" />
     <ClInclude Include="core\filter_settings.h" />
+    <ClInclude Include="filter\filter\filter_util.h" />
+    <ClInclude Include="filter\filter\nat_table.h" />
+    <ClInclude Include="filter\filter\packet_filter.h" />
+    <ClInclude Include="filter\filter\process_cache.h" />
+    <ClInclude Include="ip_convert.h" />
     <ClInclude Include="core\relation_map.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

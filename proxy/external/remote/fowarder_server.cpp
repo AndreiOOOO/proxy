@@ -163,6 +163,7 @@ void fowarder_remote_init(boost::asio::io_context* io_context, unsigned short po
 }
 
 void fowarder_remote_send_packet(uint32_t gateway_id, uint32_t connection_id, uint8_t protocol, uint32_t remote_address, uint16_t remote_port, std::shared_ptr<std::string> data) {
+    std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << data->size();
     if (fr) {
         fr->send_packet(gateway_id, connection_id, protocol, remote_address, remote_port, data);
     }

@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <functional>
 #include <queue>
+#include <iostream>
 
 extern bool  filter_get_original_relation_info(
     uint32_t sa, uint16_t sp, uint32_t da, uint16_t dp,
@@ -74,7 +75,7 @@ bool tcp_server::get_original_relation(uint32_t relation_id, uint32_t& sa, uint1
         uint16_t original_sp, original_dp;
 
         bool res = filter_get_original_relation_info(
-            current_da, current_dp, current_sa, current_sp,
+            current_sa, current_sp, current_da, current_dp,
             original_sa, original_sp, original_da, original_dp
         );
         if (res) {
@@ -98,17 +99,21 @@ void tcp_server::start_accept() {
 
 void tcp_server::handle_accept(std::shared_ptr<boost::asio::ip::tcp::socket> socket, const boost::system::error_code& error) {
     if (!error) {
-        
+        std::cout << "\n " << __FILE__ << __FUNCTION__ << " : " << __LINE__;
         uint32_t relation_id = next_id_++;
         connections_[relation_id] = socket;
         buffers_[relation_id].resize(60000);
         socket->async_read_some(boost::asio::buffer(buffers_[relation_id]), std::bind(&tcp_server::handle_read, this, relation_id, socket, std::placeholders::_1, std::placeholders::_2));
+    }
+    else {
+        std::cout << "\n " << __FILE__ << __FUNCTION__ << " : " << __LINE__;
     }
     start_accept();
 }
 
 void tcp_server::handle_read(uint32_t relation_id, std::shared_ptr<boost::asio::ip::tcp::socket> socket, const boost::system::error_code& error, size_t bytes_transferred) {
     if (!error) {
+        std::cout << "\n " << __FILE__ << __FUNCTION__ << " : " << __LINE__;
         if (recv_handler_) {
             std::shared_ptr<std::string> data = std::make_shared<std::string>(buffers_[relation_id].data(), bytes_transferred);
             io_context_.post([relation_id, data, this]() { recv_handler_(relation_id, data); });
@@ -116,6 +121,7 @@ void tcp_server::handle_read(uint32_t relation_id, std::shared_ptr<boost::asio::
         socket->async_read_some(boost::asio::buffer(buffers_[relation_id]), std::bind(&tcp_server::handle_read, this, relation_id, socket, std::placeholders::_1, std::placeholders::_2));
     }
     else {
+        std::cout << "\n " << __FILE__ << __FUNCTION__ << " : " << __LINE__;
         io_context_.post([relation_id, this]() { connections_.erase(relation_id); buffers_.erase(relation_id); write_queues_.erase(relation_id); writing_.erase(relation_id); });
     }
 }

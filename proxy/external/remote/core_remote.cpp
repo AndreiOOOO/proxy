@@ -54,13 +54,19 @@ public:
         fowarder_remote_init(&io_context_, port);
         internet_connector_init(io_context_);
 
-        auto fowarder_remote_receive_handler = [this](uint32_t gateway_id, uint32_t connection_id, uint8_t proto, uint32_t dest_address, uint16_t dest_port, std::shared_ptr<std::string> data) {
+        auto fowarder_remote_receive_handler = 
+            [this](uint32_t gateway_id, uint32_t connection_id, 
+                uint8_t proto, uint32_t dest_address, 
+                uint16_t dest_port, std::shared_ptr<std::string> data
+                ) {
+                    std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << data->size();
             session_info* session = get_session(gateway_id);
             uint32_t id = session->get_internet_connector_id(connection_id);
             internet_connector_async_send(id, proto, dest_address, dest_port, data);
             };
 
         auto internet_connector_receive_handler = [this](uint32_t id, std::shared_ptr<std::string> data) {
+            std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << data->size();
             for (auto& pair : session_map_) {
                 session_info* session = pair.second.get();
                 uint32_t connection_id = session->get_connection_id(id);
@@ -91,10 +97,14 @@ private:
     std::map<uint32_t, std::unique_ptr<session_info>> session_map_;
 };
 
-int core_init() {
+int core_remote_init(
+) {
     boost::asio::io_context io_context;
     core core(io_context);
     core.init();
-    io_context.run();
+    while (true) {
+        io_context.run();
+    }
+    
     return 0;
 }

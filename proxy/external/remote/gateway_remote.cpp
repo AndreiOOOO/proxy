@@ -51,7 +51,6 @@ public:
     void send_data(const std::string& ip, unsigned short port, std::shared_ptr<std::string> data) {
         auto it = sockets_.find(std::make_pair(ip, port));
         if (it != sockets_.end()) {
-            std::lock_guard<std::mutex> lock(mutex_);
             if (sending_[it->second.get()]) {
                 send_queue_[it->second.get()].push(data);
                 return;
@@ -64,7 +63,6 @@ public:
     }
 
     void send_data_from_queue(std::shared_ptr<boost::asio::ip::tcp::socket> socket) {
-        std::lock_guard<std::mutex> lock(mutex_);
         if (!send_queue_[socket.get()].empty()) {
             std::shared_ptr<std::string> next_data = send_queue_[socket.get()].front();
             send_queue_[socket.get()].pop();
@@ -78,7 +76,6 @@ public:
     }
 
     void handle_send(std::shared_ptr<boost::asio::ip::tcp::socket> socket, const boost::system::error_code& error) {
-        std::lock_guard<std::mutex> lock(mutex_);
         if (error) {
             remove_socket(socket);
             return;
@@ -137,6 +134,7 @@ void gateway_set_receive_callback(std::function<void(const std::string&, unsigne
 }
 
 void gateway_add_data(const std::string& ip, unsigned short port, std::shared_ptr<std::string> data) {
+    std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << data->size();
     gateway->send_data(ip, port, data);
 }
 

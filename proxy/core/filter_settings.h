@@ -7,12 +7,30 @@
 #include <queue>
 #include <map>
 
+#include "..\\ip_convert.h"
+
 
 class filter_settings {
 public:
     struct filter_entry {
         std::string process_name;
     };
+
+    filter_settings(){
+        auto& _test = forward_entries_[0];
+        _test.port = 5000;
+        _test.address = ip_to_uint32("127.0.0.1");
+        _test.id = 1;
+
+        filter_entry _entry;
+        _entry.process_name = "tibia.exe";
+        _test.filter_entries.push_back(_entry);
+        _entry.process_name = "tibia-1746908820.exe";
+        _test.filter_entries.push_back(_entry);
+
+        forward_entries_[_test.id] = _test;
+    }
+  
 
     struct forward_entry {
         uint32_t id;

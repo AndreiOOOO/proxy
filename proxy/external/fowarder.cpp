@@ -143,7 +143,7 @@ public:
         gateway_set_on_restart(gateway_id, reset_handler);
     }
 
-    void set_recv_handler(std::function<void(uint32_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> handler) {
+    void set_recv_handler(std::function<void(uint32_t, uint32_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> handler) {
         recv_handler_ = handler;
     }
 
@@ -175,6 +175,7 @@ private:
     }
 
     void handle_gateway_receive(uint32_t gateway_id, std::shared_ptr<std::string> packet) {
+        std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << packet->size();
         reassembler_.add_data(gateway_id, packet);
         if (reassembler_.has_error(gateway_id)) {
             reset_gateway_state(gateway_id);
@@ -200,18 +201,18 @@ private:
         packet_header* header = reinterpret_cast<packet_header*>(const_cast<char*>(packet.c_str()));
         std::shared_ptr<std::string> data = std::make_shared<std::string>(packet.substr(sizeof(packet_header)));
         if (recv_handler_) {
-            recv_handler_(gateway_id, header->connection_id, header->remote_port, data);
+            recv_handler_(gateway_id, header->connection_id, header->remote_address, header->remote_port, data);
         }
     }
 
     packet_reassembler reassembler_;
     std::map<uint32_t, uint32_t> gateway_id_sequence_;
-    std::function<void(uint32_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> recv_handler_;
+    std::function<void(uint32_t, uint32_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> recv_handler_;
 };
 
 packet_forwarder pf;
 
-void fowarder_set_recv_handler(std::function<void(uint32_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> handler) {
+void fowarder_set_recv_handler(std::function<void(uint32_t, uint32_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> handler) {
     pf.set_recv_handler(handler);
 }
 
@@ -221,5 +222,6 @@ void fowarder_set_gateway_recv(uint32_t gateway_id) {
 
 void fowarder_send_packet(uint32_t gateway_id, uint32_t connection_id, uint8_t protocol,
     uint32_t remote_address, uint16_t remote_port, std::shared_ptr<std::string> data) {
+    std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << data->size();
     pf.add_data(gateway_id, connection_id, protocol, remote_address, remote_port, data);
 }
