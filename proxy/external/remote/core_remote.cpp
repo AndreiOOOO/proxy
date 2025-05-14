@@ -8,6 +8,7 @@
 extern void fowarder_remote_init(boost::asio::io_context* io_context, unsigned short port);
 extern void fowarder_remote_send_packet(uint32_t gateway_id, uint32_t connection_id, uint8_t protocol, uint32_t remote_address, uint16_t remote_port, std::shared_ptr<std::string> data);
 extern void fowarder_remote_set_receive(std::function<void(uint32_t, uint32_t, uint8_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> handler);
+extern void fowarder_remote_set_on_gateway_close_callback(std::function<void(uint32_t)> callback);
 
 extern void internet_connector_init(boost::asio::io_context& io_context);
 extern void internet_connector_async_send(uint32_t id, uint8_t proto, uint32_t dest_address, uint16_t dest_port, std::shared_ptr<std::string> data);
@@ -39,10 +40,15 @@ public:
         return 0;
     }
 
+    bool is_releasing() const { return releasing_; }
+    void set_releasing() { releasing_ = true; }
+
+    std::map<uint32_t, uint32_t> connection_map_; // connection_id -> internet_connector_id
 private:
+
+    bool releasing_ = false;
     uint32_t gateway_id_;
     uint32_t next_id_ = 1;
-    std::map<uint32_t, uint32_t> connection_map_; // connection_id -> internet_connector_id
 };
 
 class core {
@@ -77,8 +83,42 @@ public:
             }
             };
 
+        set_on_gateway_close_callback();
         fowarder_remote_set_receive(fowarder_remote_receive_handler);
         internet_connector_async_receive(internet_connector_receive_handler);
+    }
+
+    void notify_close_internet_connectors(session_info* session) {
+        for (auto& pair : session->connection_map_) {
+            uint32_t id = pair.second;
+            internet_connector_async_send(id, 0, 0, 0, std::make_shared<std::string>());
+        }
+    }
+
+    void schedule_session_removal(uint32_t gateway_id) {
+        io_context_.post([this, gateway_id]() {
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+            session_map_.erase(gateway_id);
+            });
+    }
+
+    void handle_gateway_close(uint32_t gateway_id) {
+        auto it = session_map_.find(gateway_id);
+        if (it != session_map_.end()) {
+            session_info* session = it->second.get();
+            if (!session->is_releasing()) {
+                session->set_releasing();
+                notify_close_internet_connectors(session);
+                schedule_session_removal(gateway_id);
+            }
+        }
+    }
+
+    void set_on_gateway_close_callback() {
+        auto gateway_close_callback = [this](uint32_t gateway_id) {
+            handle_gateway_close(gateway_id);
+            };
+        fowarder_remote_set_on_gateway_close_callback(gateway_close_callback);
     }
 
     session_info* get_session(uint32_t gateway_id) {

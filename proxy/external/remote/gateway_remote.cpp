@@ -43,7 +43,7 @@ public:
                 return;
             }
             boost::asio::ip::tcp::endpoint endpoint = socket->remote_endpoint();
-            handler_(endpoint.address().to_string(), endpoint.port(), std::make_shared<std::string>(recv_buffer->begin(), recv_buffer->begin() + bytes_transferred));
+            receive_handler_(endpoint.address().to_string(), endpoint.port(), std::make_shared<std::string>(recv_buffer->begin(), recv_buffer->begin() + bytes_transferred));
             start_recv(socket);
             });
     }
@@ -103,8 +103,8 @@ public:
         }
     }
 
-    void set_recv_handler(std::function<void(const std::string&, unsigned short, std::shared_ptr<std::string>)> handler) {
-        handler_ = handler;
+    void set_receive_handler(std::function<void(const std::string&, unsigned short, std::shared_ptr<std::string>)> handler) {
+        receive_handler_ = handler;
     }
 
     void set_on_close_handler(std::function<void(const std::string&, unsigned short)> handler) {
@@ -117,8 +117,7 @@ private:
     std::map<std::pair<std::string, unsigned short>, std::shared_ptr<boost::asio::ip::tcp::socket>> sockets_;
     std::map<boost::asio::ip::tcp::socket*, std::queue<std::shared_ptr<std::string>>> send_queue_;
     std::map<boost::asio::ip::tcp::socket*, bool> sending_;
-    std::mutex mutex_;
-    std::function<void(const std::string&, unsigned short, std::shared_ptr<std::string>)> handler_;
+    std::function<void(const std::string&, unsigned short, std::shared_ptr<std::string>)> receive_handler_;
     std::function<void(const std::string&, unsigned short)> on_close_handler_;
 };
 
@@ -130,7 +129,7 @@ void gateway_remote_init(boost::asio::io_context* io_context, unsigned short por
 }
 
 void gateway_set_receive_callback(std::function<void(const std::string&, unsigned short, std::shared_ptr<std::string>)> handler) {
-    gateway->set_recv_handler(handler);
+    gateway->set_receive_handler(handler);
 }
 
 void gateway_add_data(const std::string& ip, unsigned short port, std::shared_ptr<std::string> data) {

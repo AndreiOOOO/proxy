@@ -25,13 +25,21 @@ class fowarder_remote {
 public:
     fowarder_remote(boost::asio::io_context* io_context, unsigned short port) {
         gateway_remote_init(io_context, port, "");
-        gateway_set_receive_callback([this](const std::string& ip, unsigned short port, std::shared_ptr<std::string> data) {
+    }
+
+    void init_receive_handler() {
+        auto receive_handler = [this](const std::string& ip, unsigned short port, std::shared_ptr<std::string> data) {
             handle_receive(ip, port, data);
-            });
-        gateway_set_on_close([this](std::string address, unsigned short port) {
+            };
+        gateway_set_receive_callback(receive_handler);
+    }
+
+    void init_on_close_handler() {
+        auto on_close_handler = [this](std::string address, unsigned short port) {
             uint32_t gateway_id = generate_gateway_id(address, port);
             gateway_on_close(gateway_id);
-            });
+            };
+        gateway_set_on_close(on_close_handler);
     }
 
     void send_packet(uint32_t gateway_id, uint32_t connection_id, uint8_t protocol, uint32_t remote_address, uint16_t remote_port, std::shared_ptr<std::string> data) {
@@ -65,8 +73,16 @@ public:
         receive_handler_ = handler;
     }
 
+    void set_on_gateway_close_callback(std::function<void(uint32_t)> callback) {
+        on_gateway_close_callback_ = callback;
+    }
+
 private:
     void handle_receive(const std::string& ip, unsigned short port, std::shared_ptr<std::string> data) {
+        if (!data) {
+            std::cerr << "Erro: dados nulos recebidos." << std::endl;
+            return;
+        }
         uint32_t gateway_id = generate_gateway_id(ip, port);
         gateway_id_map_[gateway_id] = std::make_pair(ip, port);
         reassembler_[gateway_id].add_data(data);
@@ -77,6 +93,10 @@ private:
         while (reassembler_[gateway_id].has_data()) {
             std::string packet = reassembler_[gateway_id].get_data();
             packet_header* header = reinterpret_cast<packet_header*>(const_cast<char*>(packet.c_str()));
+            if (!header) {
+                std::cerr << "Erro: cabeçalho nulo." << std::endl;
+                return;
+            }
             handle_packet(gateway_id, header, packet);
         }
     }
@@ -91,6 +111,10 @@ private:
         reassembler_.erase(gateway_id);
         gateway_sequence_.erase(gateway_id);
         gateway_id_map_.erase(gateway_id);
+
+        if (on_gateway_close_callback_) {
+            on_gateway_close_callback_(gateway_id);
+        }
     }
 
     uint32_t generate_gateway_id(const std::string& ip, unsigned short port) {
@@ -150,6 +174,7 @@ private:
         bool error = false;
     };
 
+    std::function<void(uint32_t)> on_gateway_close_callback_;
     std::map<uint32_t, reassembler> reassembler_;
     std::map<uint32_t, uint32_t> gateway_sequence_;
     std::map<uint32_t, std::pair<std::string, unsigned short>> gateway_id_map_;
@@ -159,18 +184,27 @@ private:
 fowarder_remote* fr = nullptr;
 
 void fowarder_remote_init(boost::asio::io_context* io_context, unsigned short port) {
+    if (!io_context) {
+        std::cerr << "Erro: contexto de IO nulo." << std::endl;
+        return;
+    }
     fr = new fowarder_remote(io_context, port);
+    fr->init_receive_handler();
+    fr->init_on_close_handler();
 }
 
 void fowarder_remote_send_packet(uint32_t gateway_id, uint32_t connection_id, uint8_t protocol, uint32_t remote_address, uint16_t remote_port, std::shared_ptr<std::string> data) {
-    std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << data->size();
-    if (fr) {
-        fr->send_packet(gateway_id, connection_id, protocol, remote_address, remote_port, data);
+    if (!data) {
+        std::cerr << "Erro: dados nulos." << std::endl;
+        return;
     }
+    fr->send_packet(gateway_id, connection_id, protocol, remote_address, remote_port, data);
 }
 
 void fowarder_remote_set_receive(std::function<void(uint32_t, uint32_t, uint8_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> handler) {
-    if (fr) {
-        fr->set_receive_handler(handler);
-    }
+    fr->set_receive_handler(handler);
+}
+
+void fowarder_remote_set_on_gateway_close_callback(std::function<void(uint32_t)> callback) {
+    fr->set_on_gateway_close_callback(callback);
 }

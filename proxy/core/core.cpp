@@ -2,7 +2,7 @@
 #include "filter_settings.h"
 #include "relation_map.h"
 
-#define TEST_USING_INTERNET_CONNECTOR 0
+#define TEST_USING_INTERNET_CONNECTOR 1
 
 // Variáveis estáticas
 static relation_map_t relation_map;

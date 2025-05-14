@@ -41,6 +41,15 @@ public:
     }
 
     void async_send(uint32_t source_id, uint8_t proto, uint32_t dest_address, uint16_t dest_port, std::shared_ptr<std::string> data) {
+        if (data->size() == 0) {
+            // Fechar a conexão
+            auto connection_ptr = get_connection(source_id);
+            if (connection_ptr) {
+                handle_socket_error(source_id);
+            }
+            return;
+        }
+
         auto connection_data_ptr = create_connection_data(source_id, proto, dest_address, dest_port, data);
         auto connection_ptr = get_or_create_connection(source_id, dest_address, dest_port);
         if (connection_ptr->socket_closing) {
