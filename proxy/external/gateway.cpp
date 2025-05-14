@@ -6,7 +6,7 @@
 #include <iostream>
 #include <map>
 
-class client_gateway {
+class client_gateway : public std::enable_shared_from_this<client_gateway> {
 public:
     client_gateway(boost::asio::io_context* io_context, uint32_t id)
         : io_context_(io_context), id_(id), connected_(false),
@@ -28,7 +28,6 @@ public:
 
     void set_recv_handler(std::function<void(std::shared_ptr<std::string>)> handler) {
         if (recv_handler_) {
-            // Já existe um handler de recebimento, não é permitido ter mais de um
             return;
         }
         recv_handler_ = handler;
@@ -61,18 +60,18 @@ private:
         }
         connecting_ = true;
         socket_.async_connect(remote_endpoint_,
-            [this](const boost::system::error_code& error) {
+            [self = shared_from_this()](const boost::system::error_code& error) {
                 if (!error) {
-                    connected_ = true;
-                    connecting_ = false;
-                    if (recv_handler_) {
-                        start_read();
+                    self->connected_ = true;
+                    self->connecting_ = false;
+                    if (self->recv_handler_) {
+                        self->start_read();
                     }
-                    send_next();
+                    self->send_next();
                 }
                 else {
-                    connecting_ = false;
-                    reset();
+                    self->connecting_ = false;
+                    self->reset();
                 }
             });
     }
@@ -85,13 +84,13 @@ private:
         std::shared_ptr<std::string> data = send_queue_.front();
         send_queue_.pop();
         boost::asio::async_write(socket_, boost::asio::buffer(*data),
-            [this](const boost::system::error_code& error, size_t bytes_transferred) {
-                sending_ = false;
+            [self = shared_from_this()](const boost::system::error_code& error, size_t bytes_transferred) {
+                self->sending_ = false;
                 if (error) {
-                    reset();
+                    self->reset();
                 }
                 else {
-                    send_next();
+                    self->send_next();
                 }
             });
     }
@@ -103,17 +102,17 @@ private:
         receiving_ = true;
         buffer.resize(1024);
         socket_.async_read_some(boost::asio::buffer(buffer),
-            [this](const boost::system::error_code& error, size_t bytes_transferred) {
-                receiving_ = false;
+            [self = shared_from_this()](const boost::system::error_code& error, size_t bytes_transferred) {
+                self->receiving_ = false;
                 if (!error) {
-                    std::shared_ptr<std::string> data = std::make_shared<std::string>(buffer.data(), bytes_transferred);
-                    if (recv_handler_) {
-                        recv_handler_(data);
+                    std::shared_ptr<std::string> data = std::make_shared<std::string>(self->buffer.data(), bytes_transferred);
+                    if (self->recv_handler_) {
+                        self->recv_handler_(data);
                     }
-                    start_read();
+                    self->start_read();
                 }
                 else {
-                    reset();
+                    self->reset();
                 }
             });
     }
@@ -153,7 +152,6 @@ public:
     }
 
     void add_data(uint32_t id, std::shared_ptr<std::string> data) {
-        
         if (gateways_.find(id) != gateways_.end()) {
             gateways_[id]->add_data(data);
         }
@@ -166,7 +164,6 @@ public:
         if (gateways_.find(id) != gateways_.end()) {
             gateways_[id]->set_recv_handler(
                 [handler, id](std::shared_ptr<std::string> data) {
-                    std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << data->size();
                     handler(id, data);
                 }
             );

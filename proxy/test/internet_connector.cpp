@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <iostream>
+#include <chrono>
 
 class internet_connector {
 private:
@@ -24,6 +25,8 @@ private:
         bool receiving = false;
         bool connecting = false;
         bool connected = false;
+        bool socket_closing = false;
+        std::chrono::steady_clock::time_point socket_close_timeout;
     };
 
     internet_connector(boost::asio::io_context& io_context)
@@ -38,22 +41,13 @@ public:
     }
 
     void async_send(uint32_t source_id, uint8_t proto, uint32_t dest_address, uint16_t dest_port, std::shared_ptr<std::string> data) {
-        auto connection_data_ptr = std::make_shared<connection_data>();
-        connection_data_ptr->source_id = source_id;
-        connection_data_ptr->proto = proto;
-        connection_data_ptr->dest_address = dest_address;
-        connection_data_ptr->dest_port = dest_port;
-        connection_data_ptr->data = data;
-
-        auto it = connections_.find(source_id);
-        std::cout << "\n############" << source_id;
-        if (it == connections_.end()) {
-            connections_[source_id] = std::make_shared<connection>();
-            connections_[source_id]->endpoint = boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(dest_address), dest_port);
-            establish_connection(source_id);
+        auto connection_data_ptr = create_connection_data(source_id, proto, dest_address, dest_port, data);
+        auto connection_ptr = get_or_create_connection(source_id, dest_address, dest_port);
+        if (connection_ptr->socket_closing) {
+            schedule_packet(connection_data_ptr);
+            return;
         }
-
-        connections_[source_id]->send_queue.push(connection_data_ptr);
+        connection_ptr->send_queue.push(connection_data_ptr);
         do_send(source_id);
     }
 
@@ -65,13 +59,42 @@ public:
     }
 
 private:
-    void establish_connection(uint32_t source_id) {
-        auto it = connections_.find(source_id);
-        if (it == connections_.end() || !it->second) {
-            return;
-        }
+    std::shared_ptr<connection_data> create_connection_data(uint32_t source_id, uint8_t proto, uint32_t dest_address, uint16_t dest_port, std::shared_ptr<std::string> data) {
+        auto connection_data_ptr = std::make_shared<connection_data>();
+        connection_data_ptr->source_id = source_id;
+        connection_data_ptr->proto = proto;
+        connection_data_ptr->dest_address = dest_address;
+        connection_data_ptr->dest_port = dest_port;
+        connection_data_ptr->data = data;
+        return connection_data_ptr;
+    }
 
-        auto connection_ptr = it->second;
+    std::shared_ptr<connection> get_or_create_connection(uint32_t source_id, uint32_t dest_address, uint16_t dest_port) {
+        auto it = connections_.find(source_id);
+        if (it == connections_.end()) {
+            connections_[source_id] = std::make_shared<connection>();
+            connections_[source_id]->endpoint = boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(dest_address), dest_port);
+            establish_connection(source_id);
+        }
+        return connections_[source_id];
+    }
+
+    std::shared_ptr<connection> get_connection(uint32_t source_id) {
+        auto it = connections_.find(source_id);
+        if (it != connections_.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+
+    void schedule_packet(std::shared_ptr<connection_data> connection_data_ptr) {
+        io_context_.post([this, connection_data_ptr]() {
+            receive_handler_(connection_data_ptr->source_id, std::make_shared<std::string>());
+            });
+    }
+
+    void establish_connection(uint32_t source_id) {
+        auto connection_ptr = get_connection(source_id);
         if (connection_ptr->connecting || connection_ptr->connected) {
             return;
         }
@@ -82,12 +105,7 @@ private:
 
         connection_ptr->connecting = true;
         connection_ptr->socket->async_connect(connection_ptr->endpoint, [this, source_id](const boost::system::error_code& error) {
-            auto it = connections_.find(source_id);
-            if (it == connections_.end() || !it->second) {
-                return;
-            }
-
-            auto connection_ptr = it->second;
+            auto connection_ptr = get_connection(source_id);
             connection_ptr->connecting = false;
             if (!error) {
                 connection_ptr->connected = true;
@@ -95,21 +113,20 @@ private:
                 do_receive(source_id);
             }
             else {
-                std::cerr << "Erro ao conectar: " << error.message() << std::endl;
+                handle_socket_error(source_id);
             }
             });
     }
 
     void do_send(uint32_t source_id) {
-        auto it = connections_.find(source_id);
-        if (it == connections_.end() || !it->second || !it->second->socket || !it->second->connected) {
-            if (it != connections_.end() && it->second && !it->second->connecting && !it->second->connected) {
+        auto connection_ptr = get_connection(source_id);
+        if (!connection_ptr || !connection_ptr->socket || !connection_ptr->connected) {
+            if (connection_ptr && !connection_ptr->connecting && !connection_ptr->connected) {
                 establish_connection(source_id);
             }
             return;
         }
 
-        auto connection_ptr = it->second;
         if (connection_ptr->connecting) {
             return;
         }
@@ -130,19 +147,17 @@ private:
                 do_send(source_id);
             }
             else {
-                std::cerr << "Erro ao enviar dados: " << error.message() << std::endl;
-                connection_ptr->connected = false;
+                handle_socket_error(source_id);
             }
             });
     }
 
     void do_receive(uint32_t source_id) {
-        auto it = connections_.find(source_id);
-        if (it == connections_.end() || !it->second || !it->second->socket || !it->second->connected) {
+        auto connection_ptr = get_connection(source_id);
+        if (!connection_ptr || !connection_ptr->socket || !connection_ptr->connected) {
             return;
         }
 
-        auto connection_ptr = it->second;
         if (connection_ptr->receiving) {
             return;
         }
@@ -156,9 +171,53 @@ private:
                 do_receive(source_id);
             }
             else {
-                std::cerr << "Erro ao receber dados: " << error.message() << std::endl;
+                handle_socket_error(source_id);
             }
             });
+    }
+
+    void handle_socket_error(uint32_t source_id) {
+        auto connection_ptr = get_connection(source_id);
+        if (connection_ptr->socket_closing) {
+            return;
+        }
+        connection_ptr->socket_closing = true;
+        connection_ptr->socket_close_timeout = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        close_socket(connection_ptr);
+        schedule_socket_release(source_id);
+        io_context_.post([this, source_id]() {
+            receive_handler_(source_id, std::make_shared<std::string>());
+            });
+    }
+
+    void close_socket(std::shared_ptr<connection> connection_ptr) {
+        try {
+            if (connection_ptr->socket) {
+                connection_ptr->socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both);
+                connection_ptr->socket->close();
+            }
+        }
+        catch (const boost::system::system_error& e) {
+            std::cerr << "Erro ao fechar o socket: " << e.what() << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Erro ao fechar o socket: " << e.what() << std::endl;
+        }
+    }
+
+    void schedule_socket_release(uint32_t source_id) {
+        auto timer = std::make_shared<boost::asio::steady_timer>(io_context_);
+        timer->expires_after(std::chrono::seconds(30));
+        timer->async_wait([this, source_id](const boost::system::error_code& error) {
+            release_socket(source_id);
+            });
+    }
+
+    void release_socket(uint32_t source_id) {
+        auto it = connections_.find(source_id);
+        if (it != connections_.end()) {
+            connections_.erase(it);
+        }
     }
 
     boost::asio::io_context& io_context_;
@@ -185,4 +244,3 @@ void internet_connector_async_receive(std::function<void(uint32_t, std::shared_p
         internet_connector_instance->async_receive(handler);
     }
 }
-

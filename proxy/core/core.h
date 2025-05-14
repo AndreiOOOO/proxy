@@ -24,7 +24,7 @@ extern void fowarder_send_packet(uint32_t gateway_id, uint32_t connection_id, ui
 extern void fowarder_set_recv_handler(
     std::function<void(uint32_t, uint32_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> handler);
 extern void fowarder_set_gateway_recv(uint32_t gateway_id);
-
+extern void fowarder_init(boost::asio::io_context* io_context_);
 
 //gateway
 extern uint32_t gateway_new_gateway(uint32_t id);

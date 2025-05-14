@@ -5,6 +5,7 @@
 #include <cstring>
 #include <map>
 #include <vector>
+#include <boost/asio.hpp>
 
 struct packet_header {
     uint16_t packet_len;
@@ -123,12 +124,46 @@ private:
 
 class packet_forwarder {
 public:
+    packet_forwarder(boost::asio::io_context& io_context) : io_context_(io_context) {}
+
     void add_data(
         uint32_t gateway_id, uint32_t connection_id,
         uint8_t protocol, uint32_t remote_address, uint16_t remote_port, std::shared_ptr<std::string> data) {
+        if (should_release_resources(gateway_id, data)) {
+            schedule_resource_release(gateway_id);
+        }
         packet_header header = generate_packet_header(gateway_id, connection_id, protocol, remote_address, remote_port, data);
         std::string packet = generate_packet(header, data);
         send_packet(gateway_id, packet);
+    }
+
+    bool should_release_resources(uint32_t gateway_id, std::shared_ptr<std::string> data) {
+        return data->size() == 0 && !has_scheduled_release(gateway_id);
+    }
+
+    bool has_scheduled_release(uint32_t gateway_id) {
+        return gateway_timers_.find(gateway_id) != gateway_timers_.end();
+    }
+
+    void schedule_resource_release(uint32_t gateway_id) {
+        auto timer = std::make_shared<boost::asio::steady_timer>(io_context_);
+        timer->expires_after(std::chrono::seconds(30));
+        timer->async_wait([this, gateway_id](const boost::system::error_code& error) {
+            if (!error) {
+                release_gateway_resources(gateway_id);
+            }
+            });
+        gateway_timers_[gateway_id] = timer;
+    }
+
+    void release_gateway_resources(uint32_t gateway_id) {
+        reassembler_.reset(gateway_id);
+        gateway_id_sequence_[gateway_id] = 0; // Resetar
+        auto it = gateway_timers_.find(gateway_id);
+        if (it != gateway_timers_.end()) {
+            it->second->cancel();
+            gateway_timers_.erase(it);
+        }
     }
 
     void set_gateway_receive(uint32_t gateway_id) {
@@ -175,53 +210,74 @@ private:
     }
 
     void handle_gateway_receive(uint32_t gateway_id, std::shared_ptr<std::string> packet) {
-        std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << packet->size();
-        reassembler_.add_data(gateway_id, packet);
-        if (reassembler_.has_error(gateway_id)) {
-            reset_gateway_state(gateway_id);
-            return;
-        }
+        try {
+            reassembler_.add_data(gateway_id, packet);
+            if (reassembler_.has_error(gateway_id)) {
+                release_gateway_resources(gateway_id);
+                return;
+            }
 
-        while (reassembler_.has_data(gateway_id)) {
-            std::string data = reassembler_.get_data(gateway_id);
-            process_packet(gateway_id, data);
+            while (reassembler_.has_data(gateway_id)) {
+                std::string data = reassembler_.get_data(gateway_id);
+                process_packet(gateway_id, data);
+            }
+        }
+        catch (const std::exception& e) {
+            std::cout << "Erro ao processar pacote: " << e.what() << std::endl;
         }
     }
 
     void handle_gateway_reset(uint32_t gateway_id) {
-        reset_gateway_state(gateway_id);
-    }
-
-    void reset_gateway_state(uint32_t gateway_id) {
-        reassembler_.reset(gateway_id);
-        gateway_id_sequence_[gateway_id] = 0; // Resetar o sequence ID
+        try {
+            release_gateway_resources(gateway_id);
+        }
+        catch (const std::exception& e) {
+            std::cout << "Erro ao resetar estado do gateway: " << e.what() << std::endl;
+        }
     }
 
     void process_packet(uint32_t gateway_id, std::string packet) {
-        packet_header* header = reinterpret_cast<packet_header*>(const_cast<char*>(packet.c_str()));
-        std::shared_ptr<std::string> data = std::make_shared<std::string>(packet.substr(sizeof(packet_header)));
-        if (recv_handler_) {
-            recv_handler_(gateway_id, header->connection_id, header->remote_address, header->remote_port, data);
+        try {
+            packet_header* header = reinterpret_cast<packet_header*>(const_cast<char*>(packet.c_str()));
+            if (packet.size() < sizeof(packet_header)) {
+                std::cout << "Erro: Pacote inválido." << std::endl;
+                return;
+            }
+            std::shared_ptr<std::string> data = std::make_shared<std::string>(packet.substr(sizeof(packet_header)));
+            if (recv_handler_) {
+                recv_handler_(gateway_id, header->connection_id, header->remote_address, header->remote_port, data);
+            }
+            if (data->size() == 0) {
+                release_gateway_resources(gateway_id);
+            }
+        }
+        catch (const std::exception& e) {
+            std::cout << "Erro ao processar pacote: " << e.what() << std::endl;
         }
     }
 
     packet_reassembler reassembler_;
     std::map<uint32_t, uint32_t> gateway_id_sequence_;
+    std::map<uint32_t, std::shared_ptr<boost::asio::steady_timer>> gateway_timers_;
     std::function<void(uint32_t, uint32_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> recv_handler_;
+    boost::asio::io_context& io_context_;
 };
 
-packet_forwarder pf;
+packet_forwarder* pf; 
+
+void fowarder_init(boost::asio::io_context* io_context_) {
+    pf = new packet_forwarder(*io_context_);
+}
 
 void fowarder_set_recv_handler(std::function<void(uint32_t, uint32_t, uint32_t, uint16_t, std::shared_ptr<std::string>)> handler) {
-    pf.set_recv_handler(handler);
+    pf->set_recv_handler(handler);
 }
 
 void fowarder_set_gateway_recv(uint32_t gateway_id) {
-    pf.set_gateway_receive(gateway_id);
+    pf->set_gateway_receive(gateway_id);
 }
 
 void fowarder_send_packet(uint32_t gateway_id, uint32_t connection_id, uint8_t protocol,
     uint32_t remote_address, uint16_t remote_port, std::shared_ptr<std::string> data) {
-    std::cout << "\n " << __FILE__ << __FUNCTION__ << " data sz " << data->size();
-    pf.add_data(gateway_id, connection_id, protocol, remote_address, remote_port, data);
+    pf->add_data(gateway_id, connection_id, protocol, remote_address, remote_port, data);
 }

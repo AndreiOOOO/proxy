@@ -117,7 +117,7 @@ void run_local_remote() {
 #endif
 }
 
-void core_run() {
+void core_run(boost::asio::io_context* io_context_) {
     filter_any_server_async_recv(on_local_data);
 
 #if TEST_USING_INTERNET_CONNECTOR
@@ -129,6 +129,7 @@ void core_run() {
 
     internet_connector_async_receive(_cb);
 #else
+    fowarder_init(io_context_);
     run_local_remote();
     fowarder_set_recv_handler(on_internet_data);
 #endif
